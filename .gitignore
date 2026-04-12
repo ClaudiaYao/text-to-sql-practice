@@ -1,0 +1,62 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+backend/.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+backend/data/vector_store/*
+!backend/data/vector_store/.gitkeep
+
+# --- Dependencies ---
+node_modules/
+jspm_packages/
+/vendor
+
+# --- Environment Variables & Secrets ---
+backend/.env
+frontend/.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# --- Build Output ---
+dist/
+build/
+out/
+/bin
+/obj
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- IDE/Editor Settings ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# --- Coverage/Tests ---
+coverage/
+.nyc_output/
+
+# --- Temporary Files ---
+tmp/
+.tmp/
+
+
+text-to-sql-practice-claude-code.json   

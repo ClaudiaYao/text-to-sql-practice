@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  sakila-db:
+    image: rsundqvist/sakila-preload:postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sakila"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
