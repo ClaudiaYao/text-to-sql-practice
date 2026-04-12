@@ -86,25 +86,50 @@ Two prompt templates live in `app/agent/gemini.py`:
 
 When changing query constraints or rules, edit these templates. Do not hardcode schema elsewhere.
 
-## Agentic pipeline (Phase 1)
+## Agentic pipeline (Phase 1 + 2)
 
 `app/agent/pipeline.py:run_pipeline()` is the single entry point called by the route.
 
 ```
 question
-  → get_schema_description()          # live DB introspection
-  → generate_sql()                    # LLM call 1
+  → get_rag_context()                 # RAG: retrieve relevant schema chunks + few-shot examples
+                                      #   falls back to full schema if RAG unavailable
+  → generate_sql(schema, fewshot)     # LLM call with RAG-enhanced prompt
   → validate_sql()                    # sqlglot: syntax + SELECT-only check
   → execute_query()                   # hit PostgreSQL
   → on failure: correct_sql() → re-validate → re-execute   (up to MAX_RETRIES=3 total)
-  → PipelineResult(sql, columns, rows, attempts)
+  → PipelineResult(sql, columns, rows, attempts, fewshot_used)
 ```
 
 - `ValueError` from `generate_sql`/`correct_sql` (LLM `ERROR:` signal) short-circuits immediately — no retries
 - `PipelineError` is raised when all retries are exhausted
-- `attempts` is returned in the API response and shown as a badge in the UI when > 1
+- `attempts` is returned in the API response; amber badge shown in UI when > 1
 
-Phase 2 will add RAG schema retrieval and few-shot example retrieval (ChromaDB + Vertex AI embeddings).
+## RAG architecture (Phase 2)
+
+Two ChromaDB collections, persisted to `backend/data/vector_store/`, embedded with Vertex AI `text-embedding-004`:
+
+| Collection | Documents | Used for |
+|---|---|---|
+| `sakila_schema` | One doc per table (DDL string) | Retrieve top-K relevant tables |
+| `sakila_fewshot` | One doc per example question | Retrieve top-K similar worked examples |
+
+**Startup flow** (`app/main.py` lifespan → `rag_context.init_rag()`):
+- If collections already have data → skip re-embedding (ChromaDB persists on disk)
+- If empty → embed all tables + seed examples via `text-embedding-004`
+- If `VERTEXAI_PROJECT` is unset or embedding fails → logs warning, falls back to full schema
+
+**Embedding task types** (important for `text-embedding-004` accuracy):
+- `RETRIEVAL_DOCUMENT` — used when storing schema/examples
+- `RETRIEVAL_QUERY` — used when embedding the user's question at query time
+
+**Key files:**
+- `app/agent/embeddings.py` — async Vertex AI embedding wrapper
+- `app/agent/schema_rag.py` — `SchemaRAG`: build + retrieve table descriptions
+- `app/agent/fewshot_rag.py` — `FewShotRAG`: build from `data/seed/sakila_examples.json` + retrieve
+- `app/agent/rag_context.py` — module-level singletons, `init_rag()`, `get_rag_context()` with fallback
+
+**Adding new few-shot examples:** edit `backend/data/seed/sakila_examples.json`, then delete `backend/data/vector_store/` and restart the server to re-embed.
 
 ## Changelog
 
@@ -114,6 +139,18 @@ Phase 2 will add RAG schema retrieval and few-shot example retrieval (ChromaDB +
 - **Backend:** FastAPI app with `POST /api/query`, `GET /api/schema`, `GET /health`; async SQLAlchemy + asyncpg; live schema introspection; Azure AI Foundry + GCP Vertex AI LLM abstraction
 - **Frontend:** React 19 + Vite + TypeScript + Tailwind CSS; components: `QueryInput`, `SqlPanel`, `ResultsTable`, `ResultsCards`, `ViewToggle`; Vite dev proxy for `/api`
 - **Infra:** `docker-compose.yml` for Sakila PostgreSQL; `backend/.env.example` with all supported config vars
+
+### 2026-04-12 — Phase 2: RAG schema + few-shot retrieval (Vertex AI + ChromaDB)
+- **New** `app/agent/embeddings.py` — async Vertex AI `text-embedding-004` wrapper (RETRIEVAL_DOCUMENT / RETRIEVAL_QUERY task types)
+- **New** `app/agent/schema_rag.py` — `SchemaRAG`: embeds one doc per DB table; retrieves top-K by cosine similarity
+- **New** `app/agent/fewshot_rag.py` — `FewShotRAG`: embeds example questions from `data/seed/sakila_examples.json`; retrieves top-K similar examples
+- **New** `app/agent/rag_context.py` — module singletons, `init_rag()` (startup), `get_rag_context()` (per request, with full-schema fallback)
+- **Updated** `app/main.py` — added FastAPI `lifespan` to call `init_rag()` on startup
+- **Updated** `app/agent/pipeline.py` — replaces `get_schema_description()` with `get_rag_context()` for schema + few-shot
+- **Updated** `app/agent/gemini.py` — `generate_sql()` accepts `fewshot_examples`; `_build_fewshot_section()` renders them into the prompt
+- **Updated** `app/config.py` — added `vertexai_embedding_model`, `rag_enabled`, `rag_schema_top_k`, `rag_fewshot_top_k`, `chroma_persist_path`
+- **Updated** `requirements.txt` — added `chromadb==0.5.23`, `google-cloud-aiplatform>=1.60.0`
+- **Updated** `.env.example` — added all RAG-related variables
 
 ### 2026-04-12 — Phase 1: Agentic self-correction loop
 - **New** `app/agent/sql_validator.py` — `validate_sql()` using `sqlglot` (syntax check + SELECT-only guard)
