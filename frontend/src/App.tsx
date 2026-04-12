@@ -95,6 +95,7 @@ export default function App() {
               sql={result.sql}
               executionMs={result.execution_ms}
               rowCount={result.row_count}
+              attempts={result.attempts}
             />
 
             {/* Results header */}

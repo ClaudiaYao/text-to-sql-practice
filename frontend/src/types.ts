@@ -4,6 +4,7 @@ export interface QueryResponse {
   rows: unknown[][];
   row_count: number;
   execution_ms: number;
+  attempts: number;
 }
 
 export interface ApiError {

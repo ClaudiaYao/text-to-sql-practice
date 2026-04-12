@@ -11,6 +11,7 @@ class QueryResponse(BaseModel):
     rows: list[list]
     row_count: int
     execution_ms: float
+    attempts: int  # number of LLM calls needed (1 = first try succeeded, >1 = self-corrected)
 
 
 class ErrorResponse(BaseModel):
