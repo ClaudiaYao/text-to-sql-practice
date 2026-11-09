@@ -12,7 +12,7 @@ function cell(value: unknown): string {
 export default function ResultsTable({ columns, rows }: Props) {
   if (rows.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-500 text-sm">
+      <div className="text-center py-16 text-gray-300 text-sm">
         Query returned no rows.
       </div>
     );
@@ -42,7 +42,7 @@ export default function ResultsTable({ columns, rows }: Props) {
               }`}
             >
               {row.map((val, ci) => (
-                <td key={ci} className="px-4 py-2.5 text-gray-300 whitespace-nowrap">
+                <td key={ci} className="px-4 py-2.5 text-gray-100 whitespace-nowrap">
                   {cell(val)}
                 </td>
               ))}

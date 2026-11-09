@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   sakila-db:
     image: rsundqvist/sakila-preload:postgres

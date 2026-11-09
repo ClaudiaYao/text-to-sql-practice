@@ -43,7 +43,7 @@ export default function QueryInput({ onSubmit, loading }: Props) {
           placeholder="Ask anything about the Sakila DVD-rental database…"
           rows={3}
           disabled={loading}
-          className="w-full bg-transparent text-gray-100 placeholder-gray-500 resize-none p-5 pr-16 text-base outline-none rounded-2xl"
+          className="w-full bg-transparent text-gray-100 placeholder-gray-400 resize-none p-5 pr-16 text-base outline-none rounded-2xl"
         />
         <button
           onClick={submit}
@@ -60,7 +60,7 @@ export default function QueryInput({ onSubmit, loading }: Props) {
 
       {/* Example chips */}
       <div className="flex flex-wrap gap-2">
-        <span className="flex items-center gap-1 text-xs text-gray-500 mr-1">
+        <span className="flex items-center gap-1 text-xs text-gray-300 mr-1">
           <Database className="w-3 h-3" /> Try:
         </span>
         {EXAMPLES.map((ex) => (
@@ -68,7 +68,7 @@ export default function QueryInput({ onSubmit, loading }: Props) {
             key={ex}
             onClick={() => { setValue(ex); textareaRef.current?.focus(); }}
             disabled={loading}
-            className="text-xs px-3 py-1.5 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 hover:border-gray-600 transition-colors disabled:opacity-40"
+            className="text-xs px-3 py-1.5 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-100 border border-gray-700 hover:border-gray-600 transition-colors disabled:opacity-40"
           >
             {ex}
           </button>

@@ -14,7 +14,7 @@ export default function ViewToggle({ mode, onChange }: Props) {
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
           mode === "table"
             ? "bg-indigo-600 text-white"
-            : "text-gray-400 hover:text-gray-200"
+            : "text-gray-200 hover:text-white"
         }`}
       >
         <LayoutList className="w-3.5 h-3.5" /> Table
@@ -24,7 +24,7 @@ export default function ViewToggle({ mode, onChange }: Props) {
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
           mode === "card"
             ? "bg-indigo-600 text-white"
-            : "text-gray-400 hover:text-gray-200"
+            : "text-gray-200 hover:text-white"
         }`}
       >
         <LayoutGrid className="w-3.5 h-3.5" /> Cards

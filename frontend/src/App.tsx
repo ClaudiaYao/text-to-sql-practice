@@ -40,7 +40,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold text-white leading-none">SQL Copilot</h1>
-            <p className="text-xs text-gray-500 leading-none mt-0.5">Sakila DVD-rental · PostgreSQL</p>
+            <p className="text-xs text-gray-300 leading-none mt-0.5">Sakila DVD-rental · PostgreSQL</p>
           </div>
         </div>
       </header>
@@ -53,7 +53,7 @@ export default function App() {
             <h2 className="text-4xl font-bold text-white tracking-tight">
               Ask your database anything
             </h2>
-            <p className="text-gray-400 text-lg">
+            <p className="text-gray-200 text-lg">
               Type a question in plain English — the AI translates it to SQL and runs it instantly.
             </p>
           </div>
@@ -85,7 +85,7 @@ export default function App() {
         {result && !loading && (
           <div className="space-y-5">
             {/* Question recap */}
-            <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex items-center gap-2 text-sm text-gray-200">
               <Sparkles className="w-4 h-4 text-indigo-400" />
               <span className="italic">&ldquo;{lastQuestion}&rdquo;</span>
             </div>
@@ -100,7 +100,7 @@ export default function App() {
 
             {/* Results header */}
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-200">
                 <span className="text-white font-semibold">{result.row_count.toLocaleString()}</span>{" "}
                 {result.row_count === 1 ? "row" : "rows"} returned
               </p>
@@ -118,8 +118,8 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 py-4 text-center text-xs text-gray-600">
-        SQL Copilot · Powered by Azure AI Foundry · Sakila sample database
+      <footer className="border-t border-gray-800 py-4 text-center text-xs text-gray-400">
+        SQL Copilot · Powered by AWS Bedrock · Sakila sample database
       </footer>
     </div>
   );

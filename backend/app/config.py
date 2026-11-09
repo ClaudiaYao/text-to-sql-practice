@@ -1,29 +1,48 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+# Resolve backend/.env relative to this file so it loads regardless of the working directory.
+ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    """All values come from backend/.env (or real environment variables). No defaults here."""
 
-    database_url: str = "postgresql+asyncpg://sakila:p_ssW0rd@localhost:5432/sakila"
-    llm_provider: str = "azure"  # "azure" | "vertexai"
+    model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
-    # Azure AI Foundry / Azure OpenAI
-    azure_openai_endpoint: str = ""
-    azure_openai_api_key: str = ""
-    azure_openai_deployment: str = "gpt-4o"
-    azure_openai_api_version: str = "2024-12-01-preview"
+    database_url: str
 
-    # GCP Vertex AI (LLM + embeddings)
-    vertexai_project: str = ""
-    vertexai_location: str = "us-central1"
-    vertexai_model: str = "gemini-2.0-flash-001"
-    vertexai_embedding_model: str = "text-embedding-004"
+    # AWS Bedrock (credentials come from the standard AWS chain: env vars, ~/.aws, SSO, IAM role)
+    aws_region: str
+    aws_profile: str = ""  # optional; empty → default credential chain
+    bedrock_model_id: str
 
-    # RAG (Phase 2)
-    rag_enabled: bool = True
-    rag_schema_top_k: int = 6    # how many table descriptions to retrieve
-    rag_fewshot_top_k: int = 3   # how many few-shot examples to retrieve
-    chroma_persist_path: str = "data/vector_store"
+    # Query execution
+    query_timeout_ms: int
+    max_rows: int
+
+    # Accuracy
+    max_attempts: int
+    fewshot_top_k: int
+    complex_candidates: int
+    candidate_temperature: float
+
+    # Cache
+    cache_enabled: bool
+    cache_max_entries: int
+    sql_cache_ttl_seconds: int
+    answer_cache_ttl_seconds: int
+    schema_cache_ttl_seconds: int
+    cache_persist_path: str = ""  # optional; empty → in-memory only
+
+    # API
+    cors_origins: str  # comma-separated
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

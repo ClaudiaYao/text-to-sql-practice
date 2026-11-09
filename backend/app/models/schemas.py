@@ -1,19 +1,33 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
     question: str
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list, max_length=20)
+
+
 class QueryResponse(BaseModel):
+    answer: str  # natural-language answer
     sql: str
     columns: list[str]
     rows: list[list]
     row_count: int
+    truncated: bool  # more rows existed than MAX_ROWS
     execution_ms: float
-    attempts: int  # number of LLM calls needed (1 = first try succeeded, >1 = self-corrected)
-
-
-class ErrorResponse(BaseModel):
-    detail: str
-    sql: str | None = None
+    attempts: int  # LLM rounds used (0 = SQL cache hit, 1 = first try, >1 = self-corrected)
+    cached: bool  # SQL served from cache (data still fresh)
+    complex: bool  # complex-question path was used (plan + multi-candidate voting)
+    candidates: int
+    agreement: float | None = None  # fraction of candidates whose results matched (complex only)
+    standalone_question: str  # the question after resolving chat context

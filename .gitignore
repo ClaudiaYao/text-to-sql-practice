@@ -6,8 +6,7 @@ backend/.venv/
 venv/
 *.egg-info/
 .pytest_cache/
-backend/data/vector_store/*
-!backend/data/vector_store/.gitkeep
+backend/data/cache/
 
 # --- Dependencies ---
 node_modules/
@@ -60,3 +59,4 @@ tmp/
 
 
 text-to-sql-practice-claude-code.json   
+note/

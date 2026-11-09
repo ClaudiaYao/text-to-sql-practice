@@ -22,7 +22,7 @@ function pickTitle(columns: string[]): number {
 export default function ResultsCards({ columns, rows }: Props) {
   if (rows.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-500 text-sm">
+      <div className="text-center py-16 text-gray-300 text-sm">
         Query returned no rows.
       </div>
     );
@@ -45,8 +45,8 @@ export default function ResultsCards({ columns, rows }: Props) {
               if (ci === titleIdx) return null;
               return (
                 <div key={col} className="flex justify-between gap-4 text-xs">
-                  <dt className="text-gray-500 uppercase tracking-wide shrink-0">{col}</dt>
-                  <dd className="text-gray-300 text-right truncate max-w-[160px]">
+                  <dt className="text-gray-300 uppercase tracking-wide shrink-0">{col}</dt>
+                  <dd className="text-gray-100 text-right truncate max-w-[160px]">
                     {cell(row[ci])}
                   </dd>
                 </div>

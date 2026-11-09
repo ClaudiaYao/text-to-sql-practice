@@ -28,7 +28,7 @@ export default function SqlPanel({ sql, executionMs, rowCount, attempts }: Props
         <div className="flex items-center gap-2 flex-wrap">
           <Code2 className="w-4 h-4 text-indigo-400 shrink-0" />
           <span className="text-sm font-semibold text-gray-200">Generated SQL</span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-300">
             {rowCount.toLocaleString()} rows &middot; {executionMs} ms
           </span>
           {attempts > 1 && (
@@ -41,15 +41,15 @@ export default function SqlPanel({ sql, executionMs, rowCount, attempts }: Props
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); copy(); }}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white transition-colors"
           >
             {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
             {copied ? "Copied!" : "Copy"}
           </button>
           {open ? (
-            <ChevronUp className="w-4 h-4 text-gray-500" />
+            <ChevronUp className="w-4 h-4 text-gray-300" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+            <ChevronDown className="w-4 h-4 text-gray-300" />
           )}
         </div>
       </div>

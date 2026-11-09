@@ -16,8 +16,8 @@
     "sql": "SELECT s.store_id, ci.city, SUM(p.amount) AS total_sales FROM store s JOIN address a ON s.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN staff st ON s.store_id = st.store_id JOIN payment p ON st.staff_id = p.staff_id GROUP BY s.store_id, ci.city ORDER BY total_sales DESC"
   },
   {
-    "question": "Find all customers who have never returned a rental",
-    "sql": "SELECT c.customer_id, c.first_name, c.last_name, c.email FROM customer c JOIN rental r ON c.customer_id = r.customer_id WHERE r.return_date IS NULL GROUP BY c.customer_id, c.first_name, c.last_name, c.email"
+    "question": "Which customers currently have a rental that has not been returned yet?",
+    "sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(*) AS unreturned_rentals FROM customer c JOIN rental r ON c.customer_id = r.customer_id WHERE r.return_date IS NULL GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY unreturned_rentals DESC, c.customer_id"
   },
   {
     "question": "How many films are in each category?",
@@ -30,5 +30,93 @@
   {
     "question": "Which staff member processed the most rentals?",
     "sql": "SELECT s.staff_id, s.first_name, s.last_name, COUNT(r.rental_id) AS rental_count FROM staff s JOIN rental r ON s.staff_id = r.staff_id GROUP BY s.staff_id, s.first_name, s.last_name ORDER BY rental_count DESC"
+  },
+  {
+    "question": "Show the top 3 customers by revenue in each country",
+    "sql": "WITH ranked AS (SELECT c.customer_id, c.first_name, c.last_name, co.country, SUM(p.amount) AS total_paid, ROW_NUMBER() OVER (PARTITION BY co.country ORDER BY SUM(p.amount) DESC) AS rn FROM customer c JOIN payment p ON c.customer_id = p.customer_id JOIN address a ON c.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN country co ON ci.country_id = co.country_id GROUP BY c.customer_id, c.first_name, c.last_name, co.country) SELECT customer_id, first_name, last_name, country, total_paid FROM ranked WHERE rn <= 3 ORDER BY country, total_paid DESC"
+  },
+  {
+    "question": "Which actors have appeared in both Horror and Comedy films?",
+    "sql": "SELECT a.actor_id, a.first_name, a.last_name FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN film_category fc ON fa.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id WHERE c.name = 'Horror' INTERSECT SELECT a.actor_id, a.first_name, a.last_name FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN film_category fc ON fa.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id WHERE c.name = 'Comedy'"
+  },
+  {
+    "question": "Show monthly rental counts for the year 2005",
+    "sql": "SELECT DATE_TRUNC('month', rental_date) AS month, COUNT(*) AS rental_count FROM rental WHERE EXTRACT(YEAR FROM rental_date) = 2005 GROUP BY DATE_TRUNC('month', rental_date) ORDER BY month"
+  },
+  {
+    "question": "What is the cumulative revenue over time by month?",
+    "sql": "WITH monthly AS (SELECT DATE_TRUNC('month', payment_date) AS month, SUM(amount) AS revenue FROM payment GROUP BY DATE_TRUNC('month', payment_date)) SELECT month, revenue, SUM(revenue) OVER (ORDER BY month) AS cumulative_revenue FROM monthly ORDER BY month"
+  },
+  {
+    "question": "Find customers who rented more than the average number of rentals",
+    "sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(r.rental_id) AS rental_count FROM customer c JOIN rental r ON c.customer_id = r.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING COUNT(r.rental_id) > (SELECT AVG(cnt) FROM (SELECT COUNT(rental_id) AS cnt FROM rental GROUP BY customer_id) sub) ORDER BY rental_count DESC"
+  },
+  {
+    "question": "Compare average payment amount per customer across stores",
+    "sql": "SELECT s.store_id, ci.city, COUNT(DISTINCT c.customer_id) AS customer_count, ROUND(AVG(p.amount), 2) AS avg_payment FROM store s JOIN address a ON s.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN customer c ON c.store_id = s.store_id JOIN payment p ON p.customer_id = c.customer_id GROUP BY s.store_id, ci.city ORDER BY store_id"
+  },
+  {
+    "question": "Which films have never been rented?",
+    "sql": "SELECT f.film_id, f.title, f.rating FROM film f WHERE NOT EXISTS (SELECT 1 FROM inventory i JOIN rental r ON i.inventory_id = r.inventory_id WHERE i.film_id = f.film_id) ORDER BY f.title"
+  },
+  {
+    "question": "Show the top 5 most profitable film categories by total rental revenue",
+    "sql": "SELECT cat.name AS category, SUM(p.amount) AS total_revenue, COUNT(r.rental_id) AS total_rentals FROM category cat JOIN film_category fc ON cat.category_id = fc.category_id JOIN film f ON fc.film_id = f.film_id JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY cat.name ORDER BY total_revenue DESC LIMIT 5"
+  },
+  {
+    "question": "For each city, show how many customers have rented Action films",
+    "sql": "SELECT ci.city, COUNT(DISTINCT c.customer_id) AS action_renters FROM city ci JOIN address a ON ci.city_id = a.city_id JOIN customer c ON a.address_id = c.address_id JOIN rental r ON c.customer_id = r.customer_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id JOIN category cat ON fc.category_id = cat.category_id WHERE cat.name = 'Action' GROUP BY ci.city ORDER BY action_renters DESC"
+  },
+  {
+    "question": "Rank actors by their total rental revenue across all their films",
+    "sql": "SELECT a.actor_id, a.first_name, a.last_name, SUM(p.amount) AS total_revenue, RANK() OVER (ORDER BY SUM(p.amount) DESC) AS revenue_rank FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN inventory i ON fa.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY a.actor_id, a.first_name, a.last_name ORDER BY revenue_rank LIMIT 20"
+  },
+  {
+    "question": "What is the average rental duration in days for each film category?",
+    "sql": "SELECT cat.name AS category, ROUND(AVG(EXTRACT(EPOCH FROM (r.return_date - r.rental_date)) / 86400)::numeric, 2) AS avg_rental_days FROM rental r JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id JOIN category cat ON fc.category_id = cat.category_id WHERE r.return_date IS NOT NULL GROUP BY cat.category_id, cat.name ORDER BY avg_rental_days DESC"
+  },
+  {
+    "question": "Which actors appeared in Action films but never in Horror films?",
+    "sql": "SELECT a.actor_id, a.first_name, a.last_name FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN film_category fc ON fa.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id WHERE c.name = 'Action' EXCEPT SELECT a.actor_id, a.first_name, a.last_name FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id JOIN film_category fc ON fa.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id WHERE c.name = 'Horror'"
+  },
+  {
+    "question": "What percentage of total revenue does each film category contribute?",
+    "sql": "SELECT cat.name AS category, SUM(p.amount) AS revenue, ROUND(100.0 * SUM(p.amount) / SUM(SUM(p.amount)) OVER (), 2) AS pct_of_total FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id JOIN category cat ON fc.category_id = cat.category_id GROUP BY cat.category_id, cat.name ORDER BY revenue DESC"
+  },
+  {
+    "question": "Show month over month revenue change",
+    "sql": "WITH monthly AS (SELECT DATE_TRUNC('month', payment_date) AS month, SUM(amount) AS revenue FROM payment GROUP BY DATE_TRUNC('month', payment_date)) SELECT month, revenue, revenue - LAG(revenue) OVER (ORDER BY month) AS change_vs_prev_month, ROUND(100.0 * (revenue - LAG(revenue) OVER (ORDER BY month)) / NULLIF(LAG(revenue) OVER (ORDER BY month), 0), 2) AS pct_change FROM monthly ORDER BY month"
+  },
+  {
+    "question": "For each category, which film was rented the most?",
+    "sql": "WITH film_rentals AS (SELECT cat.category_id, cat.name AS category, f.film_id, f.title, COUNT(r.rental_id) AS rental_count FROM category cat JOIN film_category fc ON cat.category_id = fc.category_id JOIN film f ON fc.film_id = f.film_id JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY cat.category_id, cat.name, f.film_id, f.title), ranked AS (SELECT *, RANK() OVER (PARTITION BY category_id ORDER BY rental_count DESC) AS rnk FROM film_rentals) SELECT category, title, rental_count FROM ranked WHERE rnk = 1 ORDER BY category, title"
+  },
+  {
+    "question": "How many customers were created each year?",
+    "sql": "SELECT EXTRACT(YEAR FROM create_date)::int AS year, COUNT(*) AS customers FROM customer GROUP BY EXTRACT(YEAR FROM create_date) ORDER BY year"
+  },
+  {
+    "question": "Find films with 'academy' in the title",
+    "sql": "SELECT film_id, title, release_year FROM film WHERE title ILIKE '%academy%' ORDER BY title"
+  },
+  {
+    "question": "Which film categories have an average film length above the overall average length?",
+    "sql": "SELECT cat.name AS category, ROUND(AVG(f.length), 1) AS avg_length FROM category cat JOIN film_category fc ON cat.category_id = fc.category_id JOIN film f ON fc.film_id = f.film_id GROUP BY cat.category_id, cat.name HAVING AVG(f.length) > (SELECT AVG(length) FROM film) ORDER BY avg_length DESC"
+  },
+  {
+    "question": "Which customers have rented films from every category?",
+    "sql": "SELECT c.customer_id, c.first_name, c.last_name FROM customer c JOIN rental r ON c.customer_id = r.customer_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film_category fc ON i.film_id = fc.film_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING COUNT(DISTINCT fc.category_id) = (SELECT COUNT(*) FROM category) ORDER BY c.customer_id"
+  },
+  {
+    "question": "What is the longest film in each rating?",
+    "sql": "SELECT rating, title, length FROM (SELECT rating, title, length, RANK() OVER (PARTITION BY rating ORDER BY length DESC) AS rnk FROM film) t WHERE rnk = 1 ORDER BY rating, title"
+  },
+  {
+    "question": "How many films does each actor appear in, and who has the most?",
+    "sql": "SELECT a.actor_id, a.first_name, a.last_name, COUNT(DISTINCT fa.film_id) AS film_count FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id GROUP BY a.actor_id, a.first_name, a.last_name HAVING COUNT(DISTINCT fa.film_id) = (SELECT MAX(cnt) FROM (SELECT COUNT(*) AS cnt FROM film_actor GROUP BY actor_id) m) ORDER BY a.actor_id"
+  },
+  {
+    "question": "Which customers spent more than the average customer?",
+    "sql": "WITH spend AS (SELECT c.customer_id, c.first_name, c.last_name, SUM(p.amount) AS total FROM customer c JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name) SELECT customer_id, first_name, last_name, total FROM spend WHERE total > (SELECT AVG(total) FROM spend) ORDER BY total DESC, customer_id"
   }
 ]
