@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     schema_cache_ttl_seconds: int
     cache_persist_path: str = ""  # optional; empty → in-memory only
 
+    # Chat history (SQLite file; relative paths resolve against backend/)
+    history_db_path: str = ""  # optional; empty → data/history/history.sqlite3
+
     # API
     cors_origins: str  # comma-separated
 

@@ -10,7 +10,7 @@ RULES
 3. Count carefully. When joins can multiply rows, use COUNT(DISTINCT <id>) or pre-aggregate in a CTE
    before joining. Group and join on ids (names are not unique), then also show the name columns.
 4. Return what was asked: identifying columns (id + name/title) plus the requested metric(s), with clear
-   aliases. No unrelated columns.
+   aliases. No unrelated columns. (A single overall figure has no identifying columns.)
 5. "Top/best/most N" -> ORDER BY the metric DESC with a stable tie-breaker (an id), LIMIT N.
    A singular "the most / the highest" (no N) must include ties: compare with MAX(...) or use RANK() = 1.
 6. Text filters: use ILIKE / LOWER() — names and titles are stored in UPPERCASE. Check VALUE HINTS and
@@ -18,7 +18,15 @@ RULES
 7. Dates: use DATE_TRUNC / EXTRACT. For relative phrases anchor on MAX(date) in the data, not CURRENT_DATE.
 8. Guard divisions with NULLIF(x, 0); round money/percentages to 2 decimals; cast to ::numeric before ROUND.
 9. Do not add a LIMIT unless the question asks for a top-N / sample (the system caps rows itself).
-10. No trailing semicolon, no comments inside the SQL."""
+10. No trailing semicolon, no comments inside the SQL.
+11. Match the grain of the answer to the wording. "On average", "the average", "overall", "in total",
+    "how many ... in all" with no "each / per / by / for every" mean ONE aggregate row: never return the
+    per-group rows. "Each / per / by / for every X" means one row per X. "On average, how many A does each
+    B have" is the average of a per-B count: aggregate it twice (per-B count in a CTE or subquery, then
+    AVG), or divide the total by COUNT(DISTINCT B id), and count B's with zero A's.
+12. Keep joins minimal: join only tables the question needs. Extra joins (e.g. through inventory or
+    rental) repeat rows and silently change averages and counts. Compute an average on the table that owns
+    the column, grouped by the attribute asked about."""
 
 _FORMAT_SIMPLE = "Reply with the SQL only, wrapped in <sql>...</sql> (or `ERROR: <reason>`)."
 

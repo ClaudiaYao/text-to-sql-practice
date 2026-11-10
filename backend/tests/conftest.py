@@ -1,5 +1,6 @@
 """Unit tests need no AWS; DB-marked tests use the real backend/.env database and skip if it is down."""
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ _FORCED = {  # deterministic behaviour for unit tests regardless of the develope
     "SCHEMA_CACHE_TTL_SECONDS": "3600",
     "CACHE_PERSIST_PATH": "",
     "CORS_ORIGINS": "http://localhost:5173",
+    "HISTORY_DB_PATH": os.path.join(tempfile.mkdtemp(prefix="t2s-history-"), "history.sqlite3"),
 }
 _DEFAULTS = {  # only used when there is no backend/.env (e.g. CI)
     "DATABASE_URL": "postgresql+asyncpg://u:p@localhost:5432/test",

@@ -22,6 +22,7 @@ export default function QueryInput({ onSubmit, loading }: Props) {
     const q = value.trim();
     if (!q || loading) return;
     onSubmit(q);
+    setValue("");
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -41,7 +42,7 @@ export default function QueryInput({ onSubmit, loading }: Props) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
           placeholder="Ask anything about the Sakila DVD-rental database…"
-          rows={3}
+          rows={2}
           disabled={loading}
           className="w-full bg-transparent text-gray-100 placeholder-gray-400 resize-none p-5 pr-16 text-base outline-none rounded-2xl"
         />

@@ -26,8 +26,8 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env      # edit; .env is gitignored. AWS creds come from the standard chain (aws sso login, etc.)
 uvicorn app.main:app --reload          # http://localhost:8000
-pytest                                  # 100 tests; DB-marked ones auto-skip if Postgres is down; none need AWS
-python -m tests.golden.runner           # LIVE accuracy eval (needs Postgres + Bedrock creds); --split dev|heldout, --tier, --limit, --threshold
+pytest                                  # 108 tests; DB-marked ones auto-skip if Postgres is down; none need AWS
+python -m tests.golden.runner           # LIVE accuracy eval (needs Postgres + Bedrock creds); --split dev|heldout, --tier, --limit, --threshold, --retries (default 2)
 pytest -m eval -s                       # same eval via pytest (GOLDEN_THRESHOLD, default 0.99)
 
 # Frontend
@@ -44,8 +44,8 @@ backend/app/
 ├── config.py          # pydantic-settings; ALL values from backend/.env (absolute path), no defaults except optional aws_profile/cache_persist_path
 ├── constants.py       # BLOCKED_COLUMNS (password, picture), ALLOWED_SCHEMAS
 ├── database.py        # async engine (read-only + statement_timeout on every connection); execute_query()
-├── api/routes.py      # /api/query, /api/chat, /api/schema, /api/cache/stats, DELETE /api/cache, /health
-├── models/schemas.py  # QueryRequest, ChatRequest, QueryResponse
+├── api/routes.py      # /api/query (stateless), /api/chat (stored), /api/conversations[/{id}] (GET, DELETE), /api/schema, /api/cache/stats, DELETE /api/cache, /health
+├── models/schemas.py  # QueryRequest, ChatRequest, QueryResponse, StoredMessage, Conversation[Summary]
 └── services/
     ├── pipeline.py        # run_pipeline(): the whole flow (see below)
     ├── llm.py             # Bedrock Converse + tasks: generate_candidates, correct_sql, rewrite_question, judge_empty, summarize
@@ -54,11 +54,12 @@ backend/app/
     ├── schema.py          # cached introspection: tables, PK, FK, enums, small-table value hints
     ├── examples.py        # few-shot selection (keyword + technique hints; no embeddings)
     ├── sql_validator.py   # sqlglot: one read-only statement, no DML/system access
+    ├── history.py         # SQLite chat store (conversations + messages; assistant rows hold the full result JSON)
     ├── cache.py           # TTLCache, sql_cache, answer_cache, normalize_question()
     └── aws.py             # cached boto3 bedrock-runtime client
-backend/data/seed/sakila_examples.json   # 30 curated (question, SQL) pairs
+backend/data/seed/sakila_examples.json   # 31 curated (question, SQL) pairs
 backend/tests/                           # unit tests + golden set (see "Golden set" below)
-frontend/src/  App.tsx, api.ts, components/{QueryInput,SqlPanel,ResultsTable,ResultsCards,ViewToggle}.tsx
+frontend/src/  App.tsx (chat + history sidebar), api.ts, components/{QueryInput,HistorySidebar,ChatMessage,SqlPanel,ResultsTable,ResultsCards,ViewToggle}.tsx
 ```
 
 ### Pipeline (`services/pipeline.py`)
@@ -75,6 +76,13 @@ frontend/src/  App.tsx, api.ts, components/{QueryInput,SqlPanel,ResultsTable,Res
 
 `Unanswerable` (model replied `ERROR: …`, e.g. a write request) → HTTP 422, no retries. `PipelineError` → 400. `LLMError` → 502.
 
+### Chat history (`services/history.py`)
+- SQLite file at `HISTORY_DB_PATH` (optional; default `backend/data/history/history.sqlite3`, gitignored). Tables `conversations(id, title, created_at, updated_at)` and `messages(id, conversation_id, role, content, error, result JSON, created_at)`; created lazily on first use.
+- `POST /api/chat {message, conversation_id?}`: with an id the **server** loads the last 20 successful messages as context for the follow-up rewriter (client `history` is only a fallback for new conversations); without an id a conversation is created. The response carries `conversation_id`.
+- Each turn stores the question and the assistant reply; the reply's `result` is the full response (SQL, columns, rows, metadata) so a conversation replays exactly. Rows are as of the time asked (not re-executed on reload).
+- Failed turns are stored too (both rows get `error`, are excluded from later context); the error body is `{detail, conversation_id}`. A store failure is logged and never fails the answer.
+- No auth/users: every client sees every conversation. `DELETE /api/cache` does not touch history.
+
 ### Cache notes
 - Only SQL (not rows) is cached long-term, so answers can never be stale; the answer cache is keyed on the result itself.
 - SQL cache optionally persists to `CACHE_PERSIST_PATH`; keys include the schema hash, so a schema change invalidates automatically.
@@ -82,13 +90,13 @@ frontend/src/  App.tsx, api.ts, components/{QueryInput,SqlPanel,ResultsTable,Res
 - Not implemented: single-flight for identical concurrent questions, user feedback → eviction, shared (Redis) cache for multi-worker deploys.
 
 ### Config (`backend/.env`; each field ← the upper-cased env var of the same name)
-`DATABASE_URL`; `AWS_REGION`, `AWS_PROFILE` (optional), `BEDROCK_MODEL_ID`; `QUERY_TIMEOUT_MS`, `MAX_ROWS`; `MAX_ATTEMPTS`, `FEWSHOT_TOP_K`, `COMPLEX_CANDIDATES`, `CANDIDATE_TEMPERATURE`; `CACHE_ENABLED`, `CACHE_MAX_ENTRIES`, `SQL_CACHE_TTL_SECONDS`, `ANSWER_CACHE_TTL_SECONDS`, `SCHEMA_CACHE_TTL_SECONDS`, `CACHE_PERSIST_PATH` (optional); `CORS_ORIGINS`. Missing required keys fail at startup with the key named.
+`DATABASE_URL`; `AWS_REGION`, `AWS_PROFILE` (optional), `BEDROCK_MODEL_ID`; `QUERY_TIMEOUT_MS`, `MAX_ROWS`; `MAX_ATTEMPTS`, `FEWSHOT_TOP_K`, `COMPLEX_CANDIDATES`, `CANDIDATE_TEMPERATURE`; `CACHE_ENABLED`, `CACHE_MAX_ENTRIES`, `SQL_CACHE_TTL_SECONDS`, `ANSWER_CACHE_TTL_SECONDS`, `SCHEMA_CACHE_TTL_SECONDS`, `CACHE_PERSIST_PATH` (optional); `HISTORY_DB_PATH` (optional); `CORS_ORIGINS`. Missing required keys fail at startup with the key named.
 
 ### Golden set (`backend/tests/golden/`)
 
 - `sakila_golden.json`: 100 cases in 9 tiers — simple 14, joins 15, aggregation 14, complex 18, dates 10, edge 12, followup 6 (with chat `history`), unanswerable 5, unsafe 6 (these two must be *refused*). Each answerable case has hand-written reference SQL; `split` is `dev` (tune on this) or `heldout` (every 3rd case; look at it rarely, to detect overfitting).
 - `scoring.py`: execution accuracy. Column names ignored, extra columns allowed, rows compared as a multiset (sequence if `ordered`), integers exact, floats within 0.011, `char(n)` padding ignored, midnight timestamps == dates. Both-empty matches.
-- `runner.py`: runs the real pipeline per case (cache disabled), scores it, prints a per-tier table + failures, reports a **95% Wilson lower bound** (with n=100 even a perfect score only proves ≥ ~96%), saves JSON to `tests/golden/reports/` (gitignored).
+- `runner.py`: runs the real pipeline per case (cache disabled), scores it (re-runs a case up to `--retries` times **only** if it ended in an error outcome — LLM/Bedrock failure, `PipelineError`, unexpected error; never because the answer was wrong, and the reference result is never consulted; `retries` is recorded per case), prints a per-tier table + failures, reports a **95% Wilson lower bound** (with n=100 even a perfect score only proves ≥ ~96%), saves JSON to `tests/golden/reports/` (gitignored).
 - Verified against the real DB: every reference runs, none exceeds `MAX_ROWS`, top-N boundaries and "first/latest" cases were checked for ties, and no golden question overlaps a few-shot example (`test_no_leakage…`). Do not copy golden questions into `sakila_examples.json`.
 - `test_golden_set.py` also runs an **offline oracle** (fake LLM returns the reference SQL through the real pipeline/DB/scorer → must be 100%) and a mutation test (scorer must reject wrong answers).
 - Limitation: the same author wrote the prompts, examples and questions, so the set is biased toward what the system already handles. Add your own real-world questions (and every production failure) to it.
@@ -105,13 +113,30 @@ frontend/src/  App.tsx, api.ts, components/{QueryInput,SqlPanel,ResultsTable,Res
 
 - **Done:** Phase A (foundation fixes, RAG removed), Phase C basics (domain notes, 30 examples, plan + vote, judge), Phase D (unit tests + golden set + scorer + runner), chat + NL-answer **backend**.
 - **BLOCKED — first live accuracy number:** `~/.aws/config` and `~/.aws/credentials` are owned by root (mode 600), so the user's boto3 finds no credentials. User must fix ownership (`sudo chown -R "$USER" ~/.aws`) or `aws sso login` / export creds, and confirm `BEDROCK_MODEL_ID`. Then: `python -m tests.golden.runner --split dev`, fix failures via domain notes / examples / prompts, re-run, and check `--split heldout` before claiming any accuracy. "99%" = execution accuracy on this set, not a guarantee for arbitrary questions.
-- **Next — Phase B frontend:** chat window (message bubbles; each assistant bubble = `answer` + collapsible SQL + table/cards + badges for cached / self-corrected / low agreement); call `/api/chat` with history; `frontend/src/types.ts` still has the old response shape.
+- **Done — Phase B frontend (first version):** chat window with history sidebar (`/api/chat` + `/api/conversations`); not yet browser-tested against a live backend (tsc, lint, build pass).
+- **Next:** per-user history (auth), rename conversations, re-run a stored question to refresh its data.
 - **Later:** clarification questions for ambiguous requests, single-flight + feedback-driven cache eviction, Redis cache.
 - **Known unverified:** nothing has run against live Bedrock yet (Postgres is verified: all 30 seed examples and 94 reference queries execute); `BEDROCK_MODEL_ID` default is an unverified guess; the follow-up rewrite, empty-result judge and answer summariser prompts are untested with a real model.
 
 ## Changelog
 
 > Update this section after every change so future Claude instances know what is done.
+
+### 2026-11-10 — Prompt: answer grain ("on average" → one row)
+
+- Cause (from the report `20261110-231641`, dev split): the model ignored aggregate wording — `aggr-07` "On average, how many rentals has each customer made?" returned 500 per-customer rows instead of one average; rule 4 ("identifying columns plus the metric") pushed it that way. Related dev failures: `aggr-10` used `category.name` for "rating", `aggr-13` added needless joins through inventory/rental.
+- `prompts.py`: rule 4 exception for single overall figures; new rule 11 (grain: "on average / overall / in total" = one aggregate row, "each/per/by" = one row per group, average-of-per-entity-counts = aggregate twice) and rule 12 (minimal joins). `domain_notes.py`: "rating" = `film.rating`, not `category.name`. New seed example (average films per actor; not a golden question). Tests pass; **accuracy effect not yet measured** — re-run `--split dev`, `DELETE /api/cache` first if the server is running, and check `--split heldout` once to catch overfitting.
+
+### 2026-11-10 — Golden runner: re-run error outcomes
+
+- `runner.py`: `--retries N` (default 2, 0 disables) re-runs a case that produced no answer (`llm_error`, `pipeline_error`, `error`) with a short back-off. Wrong answers and refusals are never re-run and the gold answer never influences a re-run, so this can't inflate accuracy (a "re-run until it matches" metric was deliberately rejected). Reports/summary now include `retries` / `cases_rerun`. New `tests/test_golden_runner.py` (5 tests).
+- Note: the pipeline's own self-correction (error fed back to the model, up to `MAX_ATTEMPTS`) is unchanged and was already part of every run.
+
+### 2026-11-10 — Server-side chat history + history UI
+
+- **New** `services/history.py` (SQLite store), `HISTORY_DB_PATH` setting, `/api/conversations` endpoints, `conversation_id` on `/api/chat` requests/responses; stored results include rows. `.gitignore`: `backend/data/history/`. `conftest.py` points history at a temp file. 3 new API tests (103 total: 100 pass, 3 DB tests skip without Postgres).
+- Bug caught by a test while building: the user half of a failed turn leaked into later context → both rows of a failed turn now carry `error` and are excluded.
+- **Frontend:** replaced single-result page with a chat view: `HistorySidebar` (list, new chat, delete), `ChatMessage` bubbles (answer, badges, collapsed SQL, table/cards), active conversation id kept in `localStorage`, reload replays from the server. `types.ts`/`api.ts` updated to the new response shape. Not exercised against a live backend/browser yet.
 
 ### 2026-11-09 — Frontend text contrast + footer
 

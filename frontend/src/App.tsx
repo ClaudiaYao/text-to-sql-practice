@@ -1,40 +1,85 @@
-import { useState } from "react";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import QueryInput from "./components/QueryInput";
-import SqlPanel from "./components/SqlPanel";
-import ResultsTable from "./components/ResultsTable";
-import ResultsCards from "./components/ResultsCards";
-import ViewToggle from "./components/ViewToggle";
-import { runQuery } from "./api";
-import type { QueryResponse, ViewMode } from "./types";
+import HistorySidebar from "./components/HistorySidebar";
+import { AssistantBubble, UserBubble } from "./components/ChatMessage";
+import { ChatError, deleteConversation, getConversation, listConversations, sendChat } from "./api";
+import type { ConversationSummary, StoredMessage } from "./types";
+
+const ACTIVE_KEY = "sqlcopilot.activeConversation";
 
 export default function App() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<QueryResponse | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [lastQuestion, setLastQuestion] = useState("");
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY));
+  const [messages, setMessages] = useState<StoredMessage[]>([]);
+  const [pending, setPending] = useState<string | null>(null); // question being answered
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const handleQuery = async (question: string) => {
-    setLoading(true);
-    setError(null);
-    setLastQuestion(question);
+  const refreshList = useCallback(async () => {
     try {
-      const data = await runQuery(question);
-      setResult(data);
+      setConversations(await listConversations());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
-      setResult(null);
+      setLoadError(err instanceof Error ? err.message : "Could not load history.");
+    }
+  }, []);
+
+  const open = useCallback(async (id: string | null) => {
+    setActiveId(id);
+    if (id) localStorage.setItem(ACTIVE_KEY, id);
+    else localStorage.removeItem(ACTIVE_KEY);
+    if (!id) {
+      setMessages([]);
+      return;
+    }
+    try {
+      setMessages((await getConversation(id)).messages);
+      setLoadError(null);
+    } catch {
+      // conversation no longer exists on the server
+      setMessages([]);
+      setActiveId(null);
+      localStorage.removeItem(ACTIVE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshList();
+    if (activeId) open(activeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, pending]);
+
+  const handleSend = async (question: string) => {
+    setPending(question);
+    try {
+      const res = await sendChat(question, activeId);
+      await open(res.conversation_id);
+    } catch (err) {
+      if (err instanceof ChatError && err.conversationId) await open(err.conversationId);
+      else setLoadError(err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
-      setLoading(false);
+      setPending(null);
+      refreshList();
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this conversation?")) return;
+    await deleteConversation(id).catch(() => undefined);
+    if (id === activeId) await open(null);
+    refreshList();
+  };
+
+  const empty = messages.length === 0 && !pending;
+
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
+    <div className="h-screen flex flex-col">
+      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur z-10">
+        <div className="px-6 py-4 flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
@@ -45,82 +90,54 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-10 space-y-8">
-        {/* Hero */}
-        {!result && !loading && !error && (
-          <div className="text-center py-8 space-y-3">
-            <h2 className="text-4xl font-bold text-white tracking-tight">
-              Ask your database anything
-            </h2>
-            <p className="text-gray-200 text-lg">
-              Type a question in plain English — the AI translates it to SQL and runs it instantly.
-            </p>
-          </div>
-        )}
+      <div className="flex flex-1 min-h-0">
+        <HistorySidebar
+          conversations={conversations}
+          activeId={activeId}
+          onSelect={(id) => open(id)}
+          onNew={() => open(null)}
+          onDelete={handleDelete}
+        />
 
-        {/* Query input */}
-        <QueryInput onSubmit={handleQuery} loading={loading} />
+        <main className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-6">
+              {empty && (
+                <div className="text-center py-12 space-y-3">
+                  <h2 className="text-4xl font-bold text-white tracking-tight">Ask your database anything</h2>
+                  <p className="text-gray-200 text-lg">
+                    Type a question in plain English — follow-ups like &ldquo;now only for store 2&rdquo; work too.
+                  </p>
+                </div>
+              )}
 
-        {/* Error banner */}
-        {error && (
-          <div className="flex gap-3 rounded-2xl border border-red-800 bg-red-950/40 p-5">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-red-300 mb-1">Query failed</p>
-              <pre className="text-xs text-red-400 whitespace-pre-wrap">{error}</pre>
+              {messages.map((m) =>
+                m.role === "user" ? (
+                  <UserBubble key={m.id} text={m.content} />
+                ) : (
+                  <AssistantBubble key={m.id} answer={m.content} error={m.error} result={m.result} />
+                ),
+              )}
+
+              {pending && (
+                <>
+                  <UserBubble text={pending} />
+                  <div className="h-24 rounded-2xl bg-gray-800 animate-pulse" />
+                </>
+              )}
+
+              {loadError && <p className="text-sm text-red-300 whitespace-pre-wrap">{loadError}</p>}
+              <div ref={bottomRef} />
             </div>
           </div>
-        )}
 
-        {/* Skeleton while loading */}
-        {loading && (
-          <div className="space-y-4 animate-pulse">
-            <div className="h-24 rounded-2xl bg-gray-800" />
-            <div className="h-64 rounded-2xl bg-gray-800" />
-          </div>
-        )}
-
-        {/* Results */}
-        {result && !loading && (
-          <div className="space-y-5">
-            {/* Question recap */}
-            <div className="flex items-center gap-2 text-sm text-gray-200">
-              <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span className="italic">&ldquo;{lastQuestion}&rdquo;</span>
+          <div className="border-t border-gray-800 bg-gray-950">
+            <div className="max-w-4xl mx-auto w-full px-6 py-4">
+              <QueryInput onSubmit={handleSend} loading={pending !== null} />
             </div>
-
-            {/* SQL panel */}
-            <SqlPanel
-              sql={result.sql}
-              executionMs={result.execution_ms}
-              rowCount={result.row_count}
-              attempts={result.attempts}
-            />
-
-            {/* Results header */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-200">
-                <span className="text-white font-semibold">{result.row_count.toLocaleString()}</span>{" "}
-                {result.row_count === 1 ? "row" : "rows"} returned
-              </p>
-              <ViewToggle mode={viewMode} onChange={setViewMode} />
-            </div>
-
-            {/* Data */}
-            {viewMode === "table" ? (
-              <ResultsTable columns={result.columns} rows={result.rows} />
-            ) : (
-              <ResultsCards columns={result.columns} rows={result.rows} />
-            )}
           </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-gray-800 py-4 text-center text-xs text-gray-400">
-        SQL Copilot · Powered by AWS Bedrock · Sakila sample database
-      </footer>
+        </main>
+      </div>
     </div>
   );
 }

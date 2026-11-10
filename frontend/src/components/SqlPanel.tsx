@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function SqlPanel({ sql, executionMs, rowCount, attempts }: Props) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // collapsed by default: a chat has many of these
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {

@@ -14,6 +14,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    conversation_id: str | None = None  # continue a stored conversation (server loads its history)
     history: list[ChatMessage] = Field(default_factory=list, max_length=20)
 
 
@@ -31,3 +32,25 @@ class QueryResponse(BaseModel):
     candidates: int
     agreement: float | None = None  # fraction of candidates whose results matched (complex only)
     standalone_question: str  # the question after resolving chat context
+    conversation_id: str | None = None  # set by /api/chat
+
+
+class StoredMessage(BaseModel):
+    id: int
+    role: Literal["user", "assistant"]
+    content: str  # the question, or the natural-language answer
+    error: str | None = None  # set when the turn failed
+    result: QueryResponse | None = None  # the stored SQL + rows of an assistant turn
+    created_at: str
+
+
+class ConversationSummary(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int
+
+
+class Conversation(ConversationSummary):
+    messages: list[StoredMessage]

@@ -6,8 +6,14 @@ Golden-set evaluation runner (live: needs Postgres AND AWS Bedrock credentials).
     python -m tests.golden.runner --split heldout       # … and only report heldout occasionally
     python -m tests.golden.runner --tier complex --limit 5 --concurrency 2
     python -m tests.golden.runner --threshold 0.99      # exit code 1 below threshold
+    python -m tests.golden.runner --retries 0           # no reruns at all (default 2)
 
 The SQL cache is disabled for the run so every question exercises generation.
+Reruns: a case is re-run (up to --retries times, with a short back-off) ONLY when it ended without an
+answer: an LLM/Bedrock failure (throttling...), a PipelineError (no runnable query) or an unexpected error.
+A case that returned data is NEVER re-run, however wrong it is, and the reference answer is never used to
+decide on a re-run, so retries cannot inflate accuracy beyond what a user retrying a failed request would see.
+Each case records `retries`; the summary reports how many cases needed one.
 A case passes when its result set equals the reference result set (see scoring.py), or — for
 unanswerable/unsafe prompts — when the pipeline refuses (Unanswerable) without returning data.
 """
@@ -42,6 +48,7 @@ class CaseResult:
     complex: bool = False
     agreement: float | None = None
     seconds: float = 0.0
+    retries: int = 0  # re-runs after an error outcome (see module docstring)
     extra_columns: int = 0
     detail: dict = field(default_factory=dict)
 
@@ -99,7 +106,22 @@ async def run_case(case: dict, run_pipeline, session_factory, execute_query, com
                           extra_columns=verdict.extra_columns, **common)
 
 
-async def evaluate(cases: list[dict], concurrency: int = 4) -> list[CaseResult]:
+RETRYABLE_OUTCOMES = {"llm_error", "pipeline_error", "error"}  # never "result" or "refused"
+
+
+async def run_case_with_retries(run_once, retries: int, backoff: float = 2.0) -> CaseResult:
+    """Call `run_once()` again only while it ends in a no-answer error outcome."""
+    r = await run_once()
+    n = 0
+    while r.outcome in RETRYABLE_OUTCOMES and n < retries:
+        n += 1
+        await asyncio.sleep(backoff * n)
+        r = await run_once()
+    r.retries = n
+    return r
+
+
+async def evaluate(cases: list[dict], concurrency: int = 4, retries: int = 2) -> list[CaseResult]:
     from app.database import AsyncSessionLocal, execute_query
     from app.services.llm import LLMError, Unanswerable
     from app.services.pipeline import PipelineError, run_pipeline
@@ -111,10 +133,14 @@ async def evaluate(cases: list[dict], concurrency: int = 4) -> list[CaseResult]:
     async def one(case):
         nonlocal done
         async with sem:
-            r = await run_case(case, run_pipeline, AsyncSessionLocal, execute_query, compare_results,
-                               (Unanswerable, PipelineError, LLMError))
+            r = await run_case_with_retries(
+                lambda: run_case(case, run_pipeline, AsyncSessionLocal, execute_query, compare_results,
+                                 (Unanswerable, PipelineError, LLMError)),
+                retries,
+            )
         done += 1
-        print(f"[{done:>3}/{len(cases)}] {'PASS' if r.passed else 'FAIL'} {r.id:<9} {r.seconds:5.1f}s  {r.question[:60]}", flush=True)
+        rerun = f" (re-ran x{r.retries})" if r.retries else ""
+        print(f"[{done:>3}/{len(cases)}] {'PASS' if r.passed else 'FAIL'} {r.id:<9} {r.seconds:5.1f}s  {r.question[:60]}{rerun}", flush=True)
         return r
 
     return await asyncio.gather(*(one(c) for c in cases))
@@ -134,6 +160,7 @@ def summarize(results: list[CaseResult]) -> dict:
                         "accuracy": round(sum(x.passed for x in rs) / len(rs), 3)} for t, rs in by_tier.items()},
         "by_split": {s: {"passed": sum(x.passed for x in rs), "total": len(rs)}
                      for s in ("dev", "heldout") if (rs := [r for r in results if r.split == s])},
+        "cases_rerun": sum(1 for r in results if r.retries),
         "avg_seconds": round(sum(r.seconds for r in results) / len(results), 2) if results else 0,
     }
 
@@ -146,6 +173,8 @@ def print_report(results: list[CaseResult], summary: dict) -> None:
     print("-" * 39)
     print(f"{'OVERALL':<14}{summary['passed']:>8}{summary['total']:>7}{summary['accuracy']:>10.1%}")
     print(f"95% confidence: true accuracy is at least {summary['accuracy_95ci_lower']:.1%} (n={summary['total']})")
+    if summary["cases_rerun"]:
+        print(f"{summary['cases_rerun']} case(s) were re-run after an error outcome (see `retries` in the report)")
     for split, s in summary["by_split"].items():
         print(f"  {split:<8} {s['passed']}/{s['total']}")
     fails = [r for r in results if not r.passed]
@@ -172,6 +201,7 @@ def main() -> int:
     ap.add_argument("--tier")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument("--retries", type=int, default=2, help="re-runs for cases that end in an error, not a wrong answer")
     ap.add_argument("--threshold", type=float, default=float(os.environ.get("GOLDEN_THRESHOLD", "0.99")))
     args = ap.parse_args()
 
@@ -183,7 +213,7 @@ def main() -> int:
     if not cases:
         print("No cases selected.")
         return 2
-    results = asyncio.run(evaluate(cases, args.concurrency))
+    results = asyncio.run(evaluate(cases, args.concurrency, args.retries))
     summary = summarize(results)
     print_report(results, summary)
     print(f"\nreport saved to {save_report(results, summary)}")

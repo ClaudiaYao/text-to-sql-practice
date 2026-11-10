@@ -7,6 +7,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 backend/data/cache/
+backend/data/history/
 
 # --- Dependencies ---
 node_modules/

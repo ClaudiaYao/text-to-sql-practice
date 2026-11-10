@@ -23,6 +23,8 @@ SAKILA_NOTES = """\
 - Names are not unique (two actors/customers can share a name): group and join on ids, then show names.
 - film.length is minutes; film.rating is an enum (see ENUM VALUES); special_features is a text array
   (use 'Trailers' = ANY(special_features)).
+- "Rating" always means the MPAA rating film.rating (G, PG, ...), never category.name; "category" / "genre"
+  means category.name. They are different attributes, and film.rating needs no join.
 - The data is historical, not current: for relative phrases ("last month", "recent", "this year") anchor on
   MAX(<date column>) of the relevant table rather than CURRENT_DATE, unless the user gives explicit dates.
 - Prefer base tables (listed in the schema) over the convenience views.
