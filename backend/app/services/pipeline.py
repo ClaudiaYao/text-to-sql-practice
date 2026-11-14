@@ -193,7 +193,7 @@ async def run_pipeline(
     schema = await get_schema_context(db)
     cache_key = make_key("sql", schema.hash, normalize_question(standalone))
 
-    # 1) SQL cache — skip the LLM, still hit the DB so data is fresh
+    # SQL cache — skip the LLM, still hit the DB so data is fresh
     if settings.cache_enabled:
         cached_sql = sql_cache.get(cache_key)
         if cached_sql:
@@ -205,7 +205,7 @@ async def run_pipeline(
             logger.warning("[pipeline] cached SQL failed (%s) — evicting", outcome.error)
             sql_cache.delete(cache_key)
 
-    # 2) Generate
+    # Generate
     complex_q = is_complex(standalone)
     examples = select_examples(standalone, settings.fewshot_top_k + (2 if complex_q else 0))
     n = max(1, settings.complex_candidates) if complex_q else 1
@@ -213,6 +213,7 @@ async def run_pipeline(
 
     candidates = await llm.generate_candidates(standalone, schema.text, examples, reasoning=complex_q, n=n)
     attempts = 1
+    
 
     outcomes: list[_Outcome] = []
     seen: set[str] = set()
@@ -232,7 +233,7 @@ async def run_pipeline(
     tried = [o.candidate.sql for o in outcomes]
     last = outcomes[0]
 
-    # 3) Self-correct if nothing ran
+    # Self-correct if nothing ran
     while not good and attempts < settings.max_attempts:
         attempts += 1
         fixed = await llm.correct_sql(
@@ -251,13 +252,13 @@ async def run_pipeline(
             sql=last.candidate.sql,
         )
 
-    # 4) Majority vote on results
+    # Majority vote on results
     chosen = vote(good)
     agreement = (
         round(sum(1 for o in good if o.signature == chosen.signature) / len(outcomes), 2) if n > 1 else None
     )
 
-    # 5) Empty result sanity check (LLM-judged, replaces keyword heuristics)
+    # Empty result sanity check (LLM-judged, replaces keyword heuristics)
     if not chosen.result.rows and attempts < settings.max_attempts:
         try:
             hint = await llm.judge_empty(standalone, chosen.candidate.sql, schema.text)
@@ -277,7 +278,7 @@ async def run_pipeline(
             except Unanswerable:
                 pass
 
-    # 6) Cache + answer
+    # Cache + answer
     result = chosen.result
     if settings.cache_enabled and result.rows:
         sql_cache.set(cache_key, chosen.candidate.sql)

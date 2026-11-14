@@ -16,6 +16,9 @@ SAKILA_NOTES = """\
 - Store attribution: revenue/payments belong to the store of the staff member who processed them
   (payment.staff_id -> staff.store_id); a rental's physical copy belongs to inventory.store_id. These give
   slightly different per-store totals, so follow the wording ("processed by", "copies in a store's inventory").
+- "Customers of store N" / "store N's customers" means customer.store_id = N (the customer's own home store),
+  even when the question also involves payments or rentals. Only use staff.store_id when the wording says
+  the payment/rental was "processed by" that store's staff.
 - A rental can have more than one payment row (a few do), so sum payments for revenue; never count payments
   as rentals.
 - Names and titles are stored in UPPERCASE (e.g. 'MARY', 'ACADEMY DINOSAUR'); category names are capitalised

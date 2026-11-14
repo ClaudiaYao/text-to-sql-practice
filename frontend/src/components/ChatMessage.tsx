@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertCircle, Sparkles, User } from "lucide-react";
+import AnswerText from "./AnswerText";
 import SqlPanel from "./SqlPanel";
 import ResultsTable from "./ResultsTable";
 import ResultsCards from "./ResultsCards";
@@ -30,8 +31,8 @@ export function AssistantBubble({ answer, error, result }: { answer: string; err
           </div>
         ) : (
           <>
-            <div className="rounded-2xl rounded-tl-sm bg-gray-900 border border-gray-800 px-4 py-2.5 text-sm text-gray-100 whitespace-pre-wrap">
-              {answer}
+            <div className="rounded-2xl rounded-tl-sm bg-gray-900 border border-gray-800 px-4 py-2.5 text-sm text-gray-100">
+              <AnswerText text={answer} />
             </div>
             {result && (
               <>

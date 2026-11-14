@@ -289,7 +289,7 @@
   },
   {
     "tier": "joins",
-    "question": "Who manages each store and in which city is the store?",
+    "question": "For each store, show the manager's first name and last name as separate columns, and the city the store is in.",
     "sql": "SELECT s.store_id, st.first_name, st.last_name, ci.city FROM store s JOIN staff st ON s.manager_staff_id = st.staff_id JOIN address a ON s.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id",
     "ordered": false,
     "expect_empty": false,
