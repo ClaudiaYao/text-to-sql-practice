@@ -63,3 +63,4 @@ text-to-sql-practice-claude-code.json
 note/
 backend/tests/golden/reports
 CLAUDE.md
+.claude/
